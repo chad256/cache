@@ -9,7 +9,7 @@ defmodule Cache.Application do
   def start(_type, _args) do
     children = [
       # Starts a worker by calling: Cache.Worker.start_link(arg)
-      {Cache, []}
+      {Cache, [name: Cache]}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

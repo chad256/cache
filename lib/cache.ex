@@ -8,6 +8,7 @@ defmodule Cache do
 
   @impl GenServer
   def start_link(opts \\ []) do
+    GenServer.start_link(__MODULE__, [], opts)
   end
 
   @doc ~s"""
@@ -37,6 +38,7 @@ defmodule Cache do
       when is_function(fun, 0) and is_integer(ttl) and ttl > 0 and
              is_integer(refresh_interval) and
              refresh_interval < ttl do
+    GenServer.call(__MODULE__, %{fun: fun, key: key, ttl: ttl, refresh_interval: refresh_interval})
   end
 
   @doc ~s"""
@@ -58,12 +60,25 @@ defmodule Cache do
   @spec get(any(), non_neg_integer(), Keyword.t()) :: result
   def get(key, timeout \\ 30_000, opts \\ []) when is_integer(timeout) and timeout > 0 do
   end
-end
 
-defmodule Cache.Store do
-  def store(store, key, value, ttl) do
+  def init(_args) do
+    cache =
+      case :ets.whereis(:function_registry) do
+        :undefined -> :ets.new(:function_registry, [:named_table, :public])
+        tid -> tid
+      end
+    {:ok, cache}
   end
 
-  def get(store, key) do
+  def handle_call({:register_function, %{key: key} = params}, _from, cache) do
+    reply =
+      case :ets.lookup(cache, key) do
+        [{^key, _val}] ->
+          {:error, :already_registered}
+        [] ->
+          Cache.Worker.start_link(%{fun: fun, key: key, ttl: ttl, refresh_interval: refresh_interval, cache: cache)
+          :ok
+      end
+    {:reply, reply, cache}
   end
 end
