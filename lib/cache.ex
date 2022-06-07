@@ -60,6 +60,9 @@ defmodule Cache do
     GenServer.call(__MODULE__, {:get, %{key: key, timeout: timeout}})
   end
 
+  ~s"""
+  Create cache store if it doesn't already exist.
+  """
   @impl true
   def init(_args) do
     cache =
@@ -70,6 +73,9 @@ defmodule Cache do
     {:ok, cache}
   end
 
+  ~s"""
+  Create cache worker for function if the functon is not already registered.
+  """
   @impl true
   def handle_call({:register_function, %{fun: fun, key: key, ttl: ttl, refresh_interval: refresh_interval}}, _from, cache) do
     reply =
@@ -81,6 +87,9 @@ defmodule Cache do
     {:reply, reply, cache}
   end
 
+  ~s"""
+  Return value if stored in cache or wait for task to compute if in progess.
+  """
   @impl true
   def handle_call({:get, %{key: key, timeout: timeout}}, _from, cache) do
     response =
@@ -91,6 +100,12 @@ defmodule Cache do
     {:reply, response, cache}
   end
 
+  ~s"""
+  Lookup cache worker associated with function.
+    - If a worker does not exist the function is not registered and an error is returned.
+    - If a worker does exist then wait for the task to be computed within the specified timeout window.
+  """
+  @spec await_task(atom(), non_neg_integer()) :: result
   defp await_task(key, timeout) do
     case Process.whereis(key) do
       nil -> {:error, :not_registered}
