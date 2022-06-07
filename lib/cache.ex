@@ -6,7 +6,6 @@ defmodule Cache do
           | {:error, :timeout}
           | {:error, :not_registered}
 
-  @impl GenServer
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, [], opts)
   end
@@ -38,11 +37,10 @@ defmodule Cache do
       when is_function(fun, 0) and is_integer(ttl) and ttl > 0 and
              is_integer(refresh_interval) and
              refresh_interval < ttl do
-    GenServer.call(__MODULE__, %{fun: fun, key: key, ttl: ttl, refresh_interval: refresh_interval})
+    GenServer.call(__MODULE__, {:register_function, %{fun: fun, key: key, ttl: ttl, refresh_interval: refresh_interval}})
   end
 
   @doc ~s"""
-  foooo
   Get the value associated with `key`.
   Details:
     - If the value for `key` is stored in the cache, the value is returned
@@ -57,28 +55,46 @@ defmodule Cache do
     - If `key` is not associated with any function, return `{:error,
       :not_registered}`
   """
-  @spec get(any(), non_neg_integer(), Keyword.t()) :: result
-  def get(key, timeout \\ 30_000, opts \\ []) when is_integer(timeout) and timeout > 0 do
+  @spec get(any(), non_neg_integer()) :: result
+  def get(key, timeout \\ 30_000) when is_integer(timeout) and timeout > 0 do
+    GenServer.call(__MODULE__, {:get, %{key: key, timeout: timeout}})
   end
 
+  @impl true
   def init(_args) do
     cache =
-      case :ets.whereis(:function_registry) do
-        :undefined -> :ets.new(:function_registry, [:named_table, :public])
-        tid -> tid
+      case Cache.Store.exists?() do
+        false -> Cache.Store.new()
+        cache -> cache
       end
     {:ok, cache}
   end
 
-  def handle_call({:register_function, %{key: key} = params}, _from, cache) do
+  @impl true
+  def handle_call({:register_function, %{fun: fun, key: key, ttl: ttl, refresh_interval: refresh_interval}}, _from, cache) do
     reply =
-      case :ets.lookup(cache, key) do
-        [{^key, _val}] ->
-          {:error, :already_registered}
-        [] ->
-          Cache.Worker.start_link(%{fun: fun, key: key, ttl: ttl, refresh_interval: refresh_interval, cache: cache)
+      case Cache.Store.get(cache, key) do
+        [{^key, _val}] -> {:error, :already_registered}
+        [] -> Cache.Worker.start_link(%{fun: fun, key: key, ttl: ttl, refresh_interval: refresh_interval, cache: cache})
           :ok
       end
     {:reply, reply, cache}
+  end
+
+  @impl true
+  def handle_call({:get, %{key: key, timeout: timeout}}, _from, cache) do
+    response =
+      case Cache.Store.get(cache, key) do
+        [{^key, value}] -> value
+        [] -> await_task(key, timeout)
+      end
+    {:reply, response, cache}
+  end
+
+  defp await_task(key, timeout) do
+    case Process.whereis(key) do
+      nil -> {:error, :not_registered}
+      _pid -> Cache.Worker.await_task(key, timeout)
+    end
   end
 end
