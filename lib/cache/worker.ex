@@ -19,7 +19,7 @@ defmodule Cache.Worker do
   def handle_call({:await_task, timeout}, _from, %{task: task} = state) do
     response =
       case Task.yield(task, timeout) do
-        {:ok, value} -> value
+        {:ok, {:ok, value}} -> value
         _ -> {:error, :timeout}
       end
     {:reply, response, state}

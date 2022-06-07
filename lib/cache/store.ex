@@ -11,10 +11,7 @@ defmodule Cache.Store do
   end
 
   def store(store, key, value) do
-    IO.inspect("in store func")
     :ets.insert(store, {key, value})
-    result = :ets.lookup(store, key)
-    IO.inspect(result)
   end
 
   def get(store, key) do
